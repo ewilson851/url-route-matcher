@@ -1,0 +1,8 @@
+# Example route table for routematch.
+# Format: pattern [optional name], one per line, in registration order.
+
+/                      home
+/users                 users.list
+/users/:id             users.show
+/users/:id/posts/:pid  users.post.show
+/static/*path          static.serve

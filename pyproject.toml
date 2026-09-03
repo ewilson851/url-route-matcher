@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "url-route-matcher"
+version = "0.1.0"
+description = "Find which route pattern matches a given path, and what it captures."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "ewilson851" }]
+
+[project.scripts]
+routematch = "routematch:main"
+
+[tool.setuptools]
+py-modules = ["routematch"]
