@@ -104,6 +104,42 @@ class AmbiguityDetectionTests(unittest.TestCase):
         self.assertEqual(matches[1][0].name, "static.other")
 
 
+class TypedParamTests(unittest.TestCase):
+    def test_int_param_captures_as_integer(self):
+        routes = parse_routes(["/users/:id:int"])
+        matches = find_matches(routes, "/users/42")
+        self.assertEqual(matches[0][1], {"id": 42})
+
+    def test_int_param_rejects_non_numeric_segment(self):
+        routes = parse_routes(["/users/:id:int"])
+        self.assertEqual(find_matches(routes, "/users/abc"), [])
+
+    def test_int_param_accepts_negative_numbers(self):
+        routes = parse_routes(["/offset/:n:int"])
+        matches = find_matches(routes, "/offset/-5")
+        self.assertEqual(matches[0][1], {"n": -5})
+
+    def test_explicit_str_type_behaves_like_untyped_param(self):
+        routes = parse_routes(["/users/:id:str"])
+        matches = find_matches(routes, "/users/abc")
+        self.assertEqual(matches[0][1], {"id": "abc"})
+
+    def test_untyped_param_falls_through_when_int_type_fails(self):
+        routes = parse_routes(
+            [
+                "/users/:id:int  users.show",
+                "/users/:name  users.by_name",
+            ]
+        )
+        matches = find_matches(routes, "/users/abc")
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0][0].name, "users.by_name")
+
+    def test_unknown_type_is_rejected(self):
+        with self.assertRaises(RouteError):
+            parse_routes(["/users/:id:uuid"])
+
+
 class ParseValidationTests(unittest.TestCase):
     def test_blank_and_comment_lines_are_ignored(self):
         routes = parse_routes(["", "# just a comment", "/users  users.list"])

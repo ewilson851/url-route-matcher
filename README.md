@@ -25,8 +25,12 @@ router registers them:
 ```
 
 - A segment like `:id` matches exactly one path segment and captures it.
+- A segment like `:id:int` does the same but also requires the segment to
+  be an integer (optionally negative); anything else fails to match that
+  route, the same way a literal mismatch would. `:id:str` is the same as
+  plain `:id`. Unknown types are rejected when the route file is loaded.
 - A segment like `*path` must be the last one in the pattern and captures
-  everything remaining, including slashes.
+  everything remaining, including slashes, always as a string.
 - Everything else has to match literally.
 - Text after the pattern is an optional free-form name, purely for display.
 
@@ -63,6 +67,26 @@ If a second pattern further down the file would also have matched, it
 shows up under `shadowed` (or in the "also matched" section of the human
 output) instead of silently vanishing. That's usually the interesting
 case: two routes that look unambiguous on their own turn out to overlap.
+
+## Typed parameters
+
+Add a type after a second colon to require more than "any single
+segment", for example `/users/:id:int`. A segment that fails the check
+just doesn't match, so a route can fall through to the next one instead
+of erroring out:
+
+```
+$ python3 routematch.py routes.txt /users/abc
+'/users/abc' matches '/users/:name' (line 4)
+  name: users.by_name
+  params:
+    name = 'abc'
+```
+
+(assuming `routes.txt` registers `/users/:id:int` before `/users/:name`).
+When the type does match, the captured value comes back as that type
+instead of a string, both in the human output and in `--json`. `int`
+is the only type beyond the implicit `str` today.
 
 No route matches:
 

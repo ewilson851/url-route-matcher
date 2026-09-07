@@ -5,14 +5,18 @@ Route file format (one pattern per line):
     /                      home
     /users                 users.list
     /users/:id             users.show
-    /users/:id/posts/:pid  users.post.show
+    /users/:id:int/posts/:pid:int  users.post.show
     /static/*path          static.serve
 
-Segments starting with ':' capture a single path segment. A segment
-starting with '*' must be the last one and captures everything remaining,
-slashes included. Everything else must match literally. Lines starting
-with '#' and blank lines are ignored. The text after the pattern (if any)
-is treated as a free-form route name and is only used for display.
+Segments starting with ':' capture a single path segment. A named
+segment may carry a type, written ':name:type' (for example ':id:int').
+A segment that fails its type check does not match, the same as a
+literal segment mismatch. Plain ':name' is equivalent to ':name:str'
+and accepts anything. A segment starting with '*' must be the last one
+and captures everything remaining, slashes included, and is always a
+string. Everything else must match literally. Lines starting with '#'
+and blank lines are ignored. The text after the pattern (if any) is
+treated as a free-form route name and is only used for display.
 
 Matching follows first-registered-wins, the same rule most routers use,
 but this tool also tells you when a later pattern would have matched too,
@@ -21,7 +25,17 @@ since that's usually the thing you're actually trying to debug.
 
 import argparse
 import json
+import re
 import sys
+
+_INT_RE = re.compile(r"-?\d+")
+
+# Each type maps to a predicate over the raw path segment and a converter
+# applied once the predicate passes.
+PARAM_TYPES = {
+    "str": (lambda value: True, str),
+    "int": (lambda value: bool(_INT_RE.fullmatch(value)), int),
+}
 
 
 class RouteError(ValueError):
@@ -35,24 +49,26 @@ class Route:
         self.pattern = pattern
         self.name = name
         self.line_no = line_no
-        self.segments = _split_path(pattern)
-        _validate_segments(self.segments, line_no)
+        self.segments = _parse_segments(_split_path(pattern), line_no)
 
     def match(self, path_segments):
         params = {}
-        for i, pseg in enumerate(self.segments):
-            if pseg.startswith("*"):
+        for i, (kind, value, type_name) in enumerate(self.segments):
+            if kind == "wildcard":
                 remainder = path_segments[i:]
                 if not remainder:
                     return None
-                params[pseg[1:]] = "/".join(remainder)
+                params[value] = "/".join(remainder)
                 return params
             if i >= len(path_segments):
                 return None
             seg = path_segments[i]
-            if pseg.startswith(":"):
-                params[pseg[1:]] = seg
-            elif pseg != seg:
+            if kind == "param":
+                predicate, convert = PARAM_TYPES[type_name]
+                if not predicate(seg):
+                    return None
+                params[value] = convert(seg)
+            elif seg != value:
                 return None
         if len(path_segments) != len(self.segments):
             return None
@@ -63,24 +79,38 @@ def _split_path(path):
     return [seg for seg in path.strip("/").split("/") if seg != ""]
 
 
-def _validate_segments(segments, line_no):
+def _parse_segment(raw, line_no):
+    if raw.startswith("*"):
+        name = raw[1:]
+        if not name:
+            raise RouteError(line_no, "wildcard segment is missing a name")
+        return ("wildcard", name, None)
+    if raw.startswith(":"):
+        body = raw[1:]
+        name, sep, type_name = body.partition(":")
+        if not sep:
+            type_name = "str"
+        if not name:
+            raise RouteError(line_no, "named segment is missing a name")
+        if type_name not in PARAM_TYPES:
+            raise RouteError(line_no, f"unknown parameter type ':{type_name}' in '{raw}'")
+        return ("param", name, type_name)
+    return ("literal", raw, None)
+
+
+def _parse_segments(raw_segments, line_no):
+    segments = []
     seen_names = set()
-    for i, seg in enumerate(segments):
-        if seg.startswith("*"):
-            if i != len(segments) - 1:
-                raise RouteError(line_no, f"wildcard segment '{seg}' must be last")
-            if len(seg) == 1:
-                raise RouteError(line_no, "wildcard segment is missing a name")
-            name = seg[1:]
-        elif seg.startswith(":"):
-            if len(seg) == 1:
-                raise RouteError(line_no, "named segment is missing a name")
-            name = seg[1:]
-        else:
-            continue
-        if name in seen_names:
-            raise RouteError(line_no, f"duplicate parameter name '{name}'")
-        seen_names.add(name)
+    for i, raw in enumerate(raw_segments):
+        kind, name, type_name = _parse_segment(raw, line_no)
+        if kind == "wildcard" and i != len(raw_segments) - 1:
+            raise RouteError(line_no, f"wildcard segment '{raw}' must be last")
+        if kind in ("param", "wildcard"):
+            if name in seen_names:
+                raise RouteError(line_no, f"duplicate parameter name '{name}'")
+            seen_names.add(name)
+        segments.append((kind, name, type_name))
+    return segments
 
 
 def parse_routes(lines):
