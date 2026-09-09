@@ -1,8 +1,11 @@
+import json
 import unittest
 
 from routematch import (
     RouteError,
     find_matches,
+    format_route_list_human,
+    format_route_list_json,
     parse_routes,
 )
 
@@ -172,6 +175,41 @@ class ParseValidationTests(unittest.TestCase):
     def test_missing_name_is_none(self):
         routes = parse_routes(["/users/:id"])
         self.assertIsNone(routes[0].name)
+
+
+class RouteListingTests(unittest.TestCase):
+    def test_human_listing_includes_line_pattern_and_name(self):
+        routes = parse_routes(["/users  users.list", "/users/:id  users.show"])
+        output = format_route_list_human(routes)
+        self.assertIn("2 route(s):", output)
+        self.assertIn("line 1", output)
+        self.assertIn("/users", output)
+        self.assertIn("users.list", output)
+        self.assertIn("line 2", output)
+        self.assertIn("/users/:id", output)
+        self.assertIn("users.show", output)
+
+    def test_human_listing_handles_missing_name(self):
+        routes = parse_routes(["/users"])
+        output = format_route_list_human(routes)
+        self.assertIn("line 1", output)
+        self.assertIn("/users", output)
+
+    def test_human_listing_reports_empty_route_set(self):
+        self.assertEqual(format_route_list_human([]), "no routes registered")
+
+    def test_json_listing_reports_line_pattern_and_name(self):
+        routes = parse_routes(["/users/:id  users.show"])
+        payload = json.loads(format_route_list_json(routes))
+        self.assertEqual(
+            payload["routes"],
+            [{"line": 1, "pattern": "/users/:id", "name": "users.show"}],
+        )
+
+    def test_json_listing_uses_line_numbers_from_original_file(self):
+        routes = parse_routes(["", "# comment", "/users  users.list"])
+        payload = json.loads(format_route_list_json(routes))
+        self.assertEqual(payload["routes"][0]["line"], 3)
 
 
 if __name__ == "__main__":

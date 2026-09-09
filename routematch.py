@@ -178,17 +178,50 @@ def format_json(path, matches):
     return json.dumps(payload, indent=2)
 
 
+def format_route_list_human(routes):
+    if not routes:
+        return "no routes registered"
+    width = max(len(route.pattern) for route in routes)
+    lines = [f"{len(routes)} route(s):"]
+    for route in routes:
+        entry = f"  line {route.line_no:<4} {route.pattern:<{width}}"
+        if route.name:
+            entry += f"  {route.name}"
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+def format_route_list_json(routes):
+    payload = {
+        "routes": [
+            {"line": route.line_no, "pattern": route.pattern, "name": route.name}
+            for route in routes
+        ]
+    }
+    return json.dumps(payload, indent=2)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="routematch",
         description="Find which route pattern matches a given path.",
     )
     parser.add_argument("routes_file", help="path to a file listing route patterns")
-    parser.add_argument("path", help="the URL path to test, e.g. /users/42")
+    parser.add_argument(
+        "path", nargs="?", help="the URL path to test, e.g. /users/42 (omit with --list)"
+    )
     parser.add_argument(
         "--json", action="store_true", help="emit machine-readable JSON instead of text"
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="dump all registered routes with their line numbers instead of matching a path",
+    )
     args = parser.parse_args(argv)
+
+    if not args.list and args.path is None:
+        parser.error("the following arguments are required: path (unless --list is given)")
 
     try:
         with open(args.routes_file, "r", encoding="utf-8") as f:
@@ -199,6 +232,13 @@ def main(argv=None):
     except RouteError as exc:
         print(f"routematch: {args.routes_file}: {exc}", file=sys.stderr)
         return 1
+
+    if args.list:
+        if args.json:
+            print(format_route_list_json(routes))
+        else:
+            print(format_route_list_human(routes))
+        return 0 if routes else 1
 
     matches = find_matches(routes, args.path)
 

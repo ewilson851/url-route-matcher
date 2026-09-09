@@ -98,6 +98,24 @@ no route matches '/does/not/exist'
 The process exits `0` when a route matched and `1` otherwise, so it's
 usable in scripts and CI without the `--json` flag.
 
+## Listing routes
+
+Sometimes you just want to see everything registered, with the line
+numbers so you can jump to the file, rather than test a single path:
+
+```
+$ python3 routematch.py routes.txt --list
+5 route(s):
+  line 1  /                     home
+  line 2  /users                users.list
+  line 3  /users/:id            users.show
+  line 4  /users/:id/posts/:pid users.post.show
+  line 5  /static/*path         static.serve
+```
+
+`--list` takes no path argument. `--json` works with it too, returning
+`{"routes": [{"line": ..., "pattern": ..., "name": ...}, ...]}`.
+
 ## Why not just read the framework's route table
 
 Most frameworks expose *something* like `app.url_map` or `router.stack`,
